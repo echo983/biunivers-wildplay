@@ -13,6 +13,7 @@ export interface MediaPlayerEvents {
 }
 
 const STARTUP_BUFFER_SECONDS = 0.7;
+const MAX_VIDEO_LATENESS_SECONDS = 0.1;
 
 export class MediaPlayer {
   #input: Input<Source>;
@@ -199,6 +200,12 @@ export class MediaPlayer {
           () => this.#isCurrent(generation),
         );
         if (!this.#isCurrent(generation)) return;
+        if (
+          frame.timestamp + frame.duration <
+          this.#currentPosition() - MAX_VIDEO_LATENESS_SECONDS
+        ) {
+          continue;
+        }
         context.drawImage(
           frame.canvas,
           0,
@@ -233,8 +240,12 @@ export class MediaPlayer {
         source.connect(this.#gain);
         source.onended = () => this.#audioSources.delete(source);
         this.#audioSources.add(source);
-        const offset = Math.max(0, startPosition - item.timestamp);
-        if (offset >= item.buffer.duration) continue;
+        const offset = getAudioBufferOffset(
+          item.timestamp,
+          item.buffer.duration,
+          this.#currentPosition(),
+        );
+        if (offset === null) continue;
         const when = Math.max(
           this.#context.currentTime,
           this.#startedAt + item.timestamp + offset,
@@ -359,4 +370,13 @@ function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
+}
+
+export function getAudioBufferOffset(
+  timestamp: number,
+  duration: number,
+  position: number,
+): number | null {
+  const offset = Math.max(0, position - timestamp);
+  return offset >= duration ? null : offset;
 }
