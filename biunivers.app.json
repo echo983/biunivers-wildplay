@@ -2,9 +2,9 @@
   "formatVersion": 1,
   "protocol": "biunivers.static-app/1",
   "appId": "io.github.echo983.biunivers-wildplay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "WildPlay",
-  "description": "A Resource Session video player for MP4, WebM and MKV.",
+  "description": "A Resource Session video player for MP4, WebM and MKV with Matroska text subtitles.",
   "license": "MIT",
   "icon": "icon.svg",
   "window": {

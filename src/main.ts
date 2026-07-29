@@ -12,6 +12,8 @@ import {
   ResourceSessionError,
   type ResourceSession,
 } from "./resourceSession/types";
+import { SubtitleController } from "./subtitles/controller";
+import type { MatroskaSubtitleTrack } from "./subtitles/matroska";
 
 const openButton = requireElement<HTMLButtonElement>("open-file");
 const playButton = requireElement<HTMLButtonElement>("play-pause");
@@ -20,6 +22,13 @@ const volume = requireElement<HTMLInputElement>("volume");
 const timeline = requireElement<HTMLInputElement>("timeline");
 const time = requireElement<HTMLSpanElement>("time");
 const canvas = requireElement<HTMLCanvasElement>("video-canvas");
+const stage = document.querySelector<HTMLElement>(".stage");
+if (!stage) throw new Error("Missing .stage");
+const subtitleOverlay = requireElement<HTMLDivElement>("subtitle-overlay");
+const contextMenu = requireElement<HTMLDivElement>("context-menu");
+const subtitleMenuTrigger =
+  requireElement<HTMLButtonElement>("subtitle-menu-trigger");
+const subtitleMenu = requireElement<HTMLDivElement>("subtitle-menu");
 const emptyState = requireElement<HTMLDivElement>("empty-state");
 const playbackHint = requireElement<HTMLButtonElement>("playback-hint");
 const fullscreenButton = requireElement<HTMLButtonElement>("fullscreen");
@@ -33,11 +42,13 @@ let current:
       source: ResourceRangeSource;
       media: ProbedMedia;
       player: MediaPlayer;
+      subtitles: SubtitleController;
     }
   | undefined;
 let opening = false;
 let scrubbing = false;
 let fullscreenControlsTimer: number | undefined;
+let subtitleTracks: readonly MatroskaSubtitleTrack[] = [];
 
 openButton.addEventListener("click", () => {
   void runOpen(async () => await client.open());
@@ -68,7 +79,21 @@ document.addEventListener("pointermove", () => {
 });
 
 document.addEventListener("pointerdown", () => {
+  closeContextMenu();
   if (document.fullscreenElement) showFullscreenControls();
+});
+
+stage.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  openContextMenu(event.clientX, event.clientY);
+});
+
+contextMenu.addEventListener("pointerdown", (event) => {
+  event.stopPropagation();
+});
+
+subtitleMenuTrigger.addEventListener("pointerenter", () => {
+  showSubtitleSubmenu();
 });
 
 playButton.addEventListener("click", () => {
@@ -122,6 +147,7 @@ void initialize();
 
 window.addEventListener("pagehide", () => {
   current?.player.dispose();
+  current?.subtitles.dispose();
   current?.source.close();
   client.dispose();
 });
@@ -189,6 +215,7 @@ async function acceptSession(session: ResourceSession): Promise<void> {
   delete status.dataset.failed;
   let media: ProbedMedia;
   let player: MediaPlayer;
+  let subtitles: SubtitleController;
   try {
     media = await probeMedia(nextSource);
     player = await MediaPlayer.create(
@@ -212,15 +239,33 @@ async function acceptSession(session: ResourceSession): Promise<void> {
       () => createMediaInput(nextSource),
       () => nextSource.cancelPending(),
     );
+    subtitles = new SubtitleController(nextSource, subtitleOverlay, {
+      onTracks: (tracks) => {
+        if (current?.source !== nextSource) return;
+        subtitleTracks = tracks;
+        renderSubtitleMenu();
+      },
+      onSelection: () => renderSubtitleMenu(),
+      onError: (error) => {
+        if (current?.source !== nextSource) return;
+        status.textContent =
+          error instanceof Error ? error.message : "字幕读取失败";
+        status.dataset.failed = "true";
+      },
+    });
   } catch (error) {
     nextSource.close();
     await client.release(session).catch(() => {});
     throw error;
   }
   const previous = current;
-  current = { session, source: nextSource, media, player };
+  current = { session, source: nextSource, media, player, subtitles };
+  subtitleTracks = [];
+  renderSubtitleMenu();
+  void subtitles.initialize();
   if (previous) {
     previous.player.dispose();
+    previous.subtitles.dispose();
     previous.source.close();
     await client.release(previous.session).catch(() => {});
   }
@@ -261,10 +306,83 @@ function formatBytes(bytes: number): string {
 }
 
 function updatePosition(position: number, duration: number): void {
+  current?.subtitles.updatePosition(position);
   if (scrubbing) return;
   time.textContent = `${formatTime(position)} / ${formatTime(duration)}`;
   timeline.max = String(Math.max(1, duration));
   timeline.value = String(position);
+}
+
+function openContextMenu(x: number, y: number): void {
+  renderSubtitleMenu();
+  contextMenu.hidden = false;
+  subtitleMenu.hidden = true;
+  const width = contextMenu.offsetWidth;
+  const height = contextMenu.offsetHeight;
+  contextMenu.style.left = `${Math.max(4, Math.min(x, innerWidth - width - 4))}px`;
+  contextMenu.style.top = `${Math.max(4, Math.min(y, innerHeight - height - 4))}px`;
+}
+
+function closeContextMenu(): void {
+  contextMenu.hidden = true;
+  subtitleMenu.hidden = true;
+}
+
+function showSubtitleSubmenu(): void {
+  const bounds = subtitleMenuTrigger.getBoundingClientRect();
+  subtitleMenu.hidden = false;
+  const width = subtitleMenu.offsetWidth;
+  const height = subtitleMenu.offsetHeight;
+  const preferredLeft = bounds.right + 3;
+  subtitleMenu.style.left =
+    `${preferredLeft + width <= innerWidth ? preferredLeft : bounds.left - width - 3}px`;
+  subtitleMenu.style.top =
+    `${Math.max(4, Math.min(bounds.top, innerHeight - height - 4))}px`;
+}
+
+function renderSubtitleMenu(): void {
+  subtitleMenu.replaceChildren();
+  subtitleMenu.append(createSubtitleItem("关闭", undefined));
+  const supported = subtitleTracks.filter((track) => track.supported);
+  for (const [index, track] of supported.entries()) {
+    subtitleMenu.append(
+      createSubtitleItem(
+        track.name?.trim() ||
+          (track.language !== "und" ? track.language : `字幕 ${index + 1}`),
+        track.number,
+      ),
+    );
+  }
+  if (supported.length === 0) {
+    const empty = document.createElement("button");
+    empty.type = "button";
+    empty.className = "context-menu-item";
+    empty.textContent = subtitleTracks.length > 0
+      ? "无受支持的文本字幕"
+      : "未发现文本字幕";
+    empty.disabled = true;
+    subtitleMenu.append(empty);
+  }
+}
+
+function createSubtitleItem(
+  label: string,
+  trackNumber: number | undefined,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "context-menu-item";
+  button.role = "menuitemradio";
+  button.textContent = label;
+  button.setAttribute(
+    "aria-checked",
+    String(current?.subtitles.selectedTrackNumber === trackNumber),
+  );
+  button.addEventListener("click", () => {
+    current?.subtitles.select(trackNumber);
+    closeContextMenu();
+  });
+  return button;
 }
 
 function formatTime(seconds: number): string {

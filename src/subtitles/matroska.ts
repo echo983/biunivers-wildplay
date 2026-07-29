@@ -37,6 +37,12 @@ const ID = {
   CUE_TRACK: 0xf7,
   CUE_CLUSTER_POSITION: 0xf1,
   CUE_DURATION: 0xb2,
+  CLUSTER: 0x1f43b675,
+  CLUSTER_TIMESTAMP: 0xe7,
+  SIMPLE_BLOCK: 0xa3,
+  BLOCK_GROUP: 0xa0,
+  BLOCK: 0xa1,
+  BLOCK_DURATION: 0x9b,
 } as const;
 
 const TEXT_CODECS = new Set([
@@ -48,6 +54,7 @@ const TEXT_CODECS = new Set([
 
 const HEADER_PROBE_BYTES = 2 * 1024 * 1024;
 const MAX_METADATA_ELEMENT_BYTES = 32 * 1024 * 1024;
+const MAX_CLUSTER_BYTES = 16 * 1024 * 1024;
 
 export interface RandomAccessReader {
   readonly size: number;
@@ -78,6 +85,12 @@ export interface MatroskaSubtitleIndex {
   timestampScaleNanoseconds: number;
   tracks: MatroskaSubtitleTrack[];
   cues: MatroskaCue[];
+}
+
+export interface SubtitleCue {
+  start: number;
+  end: number;
+  text: string;
 }
 
 export async function probeMatroskaSubtitles(
@@ -154,6 +167,47 @@ export async function probeMatroskaSubtitles(
     tracks: markIndexAvailability(tracks, cues),
     cues,
   };
+}
+
+export async function loadSubtitleWindow(
+  source: RandomAccessReader,
+  index: MatroskaSubtitleIndex,
+  track: MatroskaSubtitleTrack,
+  position: number,
+  windowSeconds = 45,
+): Promise<SubtitleCue[]> {
+  if (!track.supported) {
+    throw invalid(track.unsupportedReason ?? "字幕轨不受支持");
+  }
+  const trackCues = index.cues.filter((cue) => cue.track === track.number);
+  const locatorCues = trackCues.length > 0 ? trackCues : index.cues;
+  if (locatorCues.length === 0) throw invalid("没有可用于随机读取的 Cue");
+  const first = Math.max(0, findCueAtOrBefore(locatorCues, position));
+  const endTime = position + windowSeconds;
+  const offsets: number[] = [];
+  for (let cueIndex = first; cueIndex < locatorCues.length; cueIndex += 1) {
+    const cue = locatorCues[cueIndex]!;
+    if (cue.time > endTime && offsets.length > 0) break;
+    if (offsets.at(-1) !== cue.clusterOffset) offsets.push(cue.clusterOffset);
+  }
+  const result: SubtitleCue[] = [];
+  for (const offset of offsets) {
+    const cluster = await readWholeElement(source, offset, MAX_CLUSTER_BYTES);
+    if (cluster.element.id !== ID.CLUSTER) throw invalid("Cue 没有指向 Cluster");
+    result.push(
+      ...parseCluster(
+        cluster.bytes,
+        cluster.element,
+        track,
+        index.timestampScaleNanoseconds,
+      ),
+    );
+  }
+  return normalizeCueEnds(
+    result
+      .filter((cue) => cue.end >= position - 1 && cue.start <= endTime)
+      .sort((left, right) => left.start - right.start),
+  );
 }
 
 function emptyIndex(segmentDataOffset: number): MatroskaSubtitleIndex {
@@ -279,6 +333,7 @@ function markIndexAvailability(
 async function readWholeElement(
   source: RandomAccessReader,
   offset: number,
+  maxBytes = MAX_METADATA_ELEMENT_BYTES,
 ): Promise<{ bytes: Uint8Array; element: EbmlElement }> {
   if (!Number.isSafeInteger(offset) || offset < 0 || offset >= source.size) {
     throw invalid("索引位置超出文件边界");
@@ -290,12 +345,142 @@ async function readWholeElement(
     header.dataSize === undefined ||
     header.endOffset === undefined ||
     header.endOffset > source.size ||
-    header.endOffset - offset > MAX_METADATA_ELEMENT_BYTES
+    header.endOffset - offset > maxBytes
   ) {
     throw invalid("元数据元素长度无效或过大");
   }
   const bytes = await source.read(offset, header.endOffset);
   return { bytes, element: readElementHeader(bytes) };
+}
+
+function parseCluster(
+  bytes: Uint8Array,
+  root: EbmlElement,
+  track: MatroskaSubtitleTrack,
+  timestampScaleNanoseconds: number,
+): SubtitleCue[] {
+  const clusterTime =
+    childValue(bytes, root, ID.CLUSTER_TIMESTAMP, readUnsigned) ?? 0;
+  const result: SubtitleCue[] = [];
+  for (const element of childrenOf(bytes, root)) {
+    if (element.id === ID.SIMPLE_BLOCK) {
+      const cue = parseSubtitleBlock(
+        payload(bytes, element),
+        undefined,
+        clusterTime,
+        track,
+        timestampScaleNanoseconds,
+      );
+      if (cue) result.push(cue);
+    } else if (element.id === ID.BLOCK_GROUP) {
+      const block = child(bytes, element, ID.BLOCK);
+      if (!block) continue;
+      const duration = childValue(
+        bytes,
+        element,
+        ID.BLOCK_DURATION,
+        readUnsigned,
+      );
+      const cue = parseSubtitleBlock(
+        payload(bytes, block),
+        duration,
+        clusterTime,
+        track,
+        timestampScaleNanoseconds,
+      );
+      if (cue) result.push(cue);
+    }
+  }
+  return result;
+}
+
+function parseSubtitleBlock(
+  bytes: Uint8Array,
+  rawDuration: number | undefined,
+  clusterTime: number,
+  track: MatroskaSubtitleTrack,
+  timestampScaleNanoseconds: number,
+): SubtitleCue | undefined {
+  const trackNumber = readBlockTrackNumber(bytes);
+  if (trackNumber.value !== track.number) return undefined;
+  const header = trackNumber.length + 3;
+  if (bytes.length < header) throw invalid("字幕 Block Header 截断");
+  const flags = bytes[trackNumber.length + 2]!;
+  if ((flags & 0x06) !== 0) throw invalid("首版不支持带 lacing 的字幕 Block");
+  const relativeTime = new DataView(
+    bytes.buffer,
+    bytes.byteOffset + trackNumber.length,
+    2,
+  ).getInt16(0);
+  const unitSeconds = timestampScaleNanoseconds * track.timestampScale / 1e9;
+  const start = (clusterTime + relativeTime) * unitSeconds;
+  const duration =
+    rawDuration === undefined ? 5 : Math.max(0, rawDuration * unitSeconds);
+  return {
+    start,
+    end: start + Math.min(duration, 30),
+    text: decodeSubtitleText(bytes.subarray(header), track.codecId),
+  };
+}
+
+function readBlockTrackNumber(bytes: Uint8Array): {
+  length: number;
+  value: number;
+} {
+  const first = bytes[0];
+  if (first === undefined || first === 0) throw invalid("字幕 Block TrackNumber 无效");
+  const length = Math.clz32(first) - 24 + 1;
+  if (length > 8 || length + 3 > bytes.length) {
+    throw invalid("字幕 Block Header 截断");
+  }
+  const marker = 1 << (8 - length);
+  let value = first & (marker - 1);
+  for (let index = 1; index < length; index += 1) {
+    value = value * 256 + bytes[index]!;
+  }
+  if (!Number.isSafeInteger(value)) throw invalid("字幕 TrackNumber 过大");
+  return { length, value };
+}
+
+export function decodeSubtitleText(bytes: Uint8Array, codecId: string): string {
+  let text = new TextDecoder().decode(bytes).replace(/\0+$/u, "");
+  if (codecId === "S_TEXT/ASS" || codecId === "S_TEXT/SSA") {
+    const fieldCount = 8;
+    let cursor = 0;
+    for (let field = 0; field < fieldCount; field += 1) {
+      const comma = text.indexOf(",", cursor);
+      if (comma < 0) {
+        cursor = 0;
+        break;
+      }
+      cursor = comma + 1;
+    }
+    if (cursor > 0) text = text.slice(cursor);
+    text = text
+      .replace(/\{[^}]*\}/gu, "")
+      .replace(/\\[Nn]/gu, "\n")
+      .replace(/\\h/gu, "\u00a0");
+  }
+  return text.trim();
+}
+
+function normalizeCueEnds(cues: SubtitleCue[]): SubtitleCue[] {
+  return cues.map((cue, index) => {
+    const next = cues[index + 1];
+    if (!next || cue.end !== cue.start + 5 || next.start <= cue.start) return cue;
+    return { ...cue, end: Math.min(cue.end, next.start) };
+  });
+}
+
+function findCueAtOrBefore(cues: MatroskaCue[], time: number): number {
+  let low = 0;
+  let high = cues.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (cues[middle]!.time <= time) low = middle + 1;
+    else high = middle - 1;
+  }
+  return high;
 }
 
 async function elementBytes(

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeSubtitleText,
+  loadSubtitleWindow,
   probeMatroskaSubtitles,
+  type MatroskaSubtitleIndex,
+  type MatroskaSubtitleTrack,
   type RandomAccessReader,
 } from "./matroska";
 
@@ -24,6 +28,12 @@ const id = {
   cueTrackPositions: [0xb7],
   cueTrack: [0xf7],
   cueClusterPosition: [0xf1],
+  cluster: [0x1f, 0x43, 0xb6, 0x75],
+  clusterTimestamp: [0xe7],
+  simpleBlock: [0xa3],
+  blockGroup: [0xa0],
+  block: [0xa1],
+  blockDuration: [0x9b],
 } as const;
 
 describe("Matroska subtitle probe", () => {
@@ -124,6 +134,56 @@ describe("Matroska subtitle probe", () => {
   });
 });
 
+describe("Matroska subtitle blocks", () => {
+  const track: MatroskaSubtitleTrack = {
+    number: 3,
+    codecId: "S_TEXT/UTF8",
+    language: "zh",
+    default: true,
+    timestampScale: 1,
+    supported: true,
+  };
+
+  it("loads SimpleBlock and BlockGroup cues from an indexed cluster", async () => {
+    const cluster = element(
+      id.cluster,
+      join(
+        uint(id.clusterTimestamp, 1000),
+        element(id.simpleBlock, block(3, 0, "第一行")),
+        element(
+          id.blockGroup,
+          join(
+            element(id.block, block(3, 2000, "第二行")),
+            uint(id.blockDuration, 3000),
+          ),
+        ),
+        element(id.simpleBlock, block(4, 0, "别的轨道")),
+      ),
+    );
+    const index: MatroskaSubtitleIndex = {
+      segmentDataOffset: 0,
+      timestampScaleNanoseconds: 1_000_000,
+      tracks: [track],
+      cues: [{ time: 1, track: 3, clusterOffset: 0 }],
+    };
+
+    const cues = await loadSubtitleWindow(memorySource(cluster), index, track, 1);
+
+    expect(cues).toEqual([
+      { start: 1, end: 3, text: "第一行" },
+      { start: 3, end: 6, text: "第二行" },
+    ]);
+  });
+
+  it("converts ASS event text without interpreting styles", () => {
+    const value =
+      "0,0,Default,Speaker,0,0,0,,{\\i1}Hello\\Nworld{\\i0}";
+    expect(
+      decodeSubtitleText(new TextEncoder().encode(value), "S_TEXT/ASS"),
+    ).toBe("Hello\nworld");
+  });
+});
+
 function memorySource(bytes: Uint8Array): RandomAccessReader {
   return {
     size: bytes.length,
@@ -151,6 +211,16 @@ function uint(elementId: readonly number[], value: number): Uint8Array {
   return element(elementId, Uint8Array.from(result));
 }
 
+function block(track: number, relativeTime: number, value: string): Uint8Array {
+  const textBytes = new TextEncoder().encode(value);
+  const output = new Uint8Array(4 + textBytes.length);
+  output[0] = 0x80 | track;
+  new DataView(output.buffer).setInt16(1, relativeTime);
+  output[3] = 0;
+  output.set(textBytes, 4);
+  return output;
+}
+
 function vint(value: number): Uint8Array {
   if (value < 0x7f) return Uint8Array.of(0x80 | value);
   if (value < 0x3fff) return Uint8Array.of(0x40 | (value >> 8), value & 0xff);
@@ -166,4 +236,3 @@ function join(...parts: Uint8Array[]): Uint8Array {
   }
   return output;
 }
-

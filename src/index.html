@@ -10,6 +10,12 @@
     <main class="player-shell">
       <section class="stage" aria-label="视频画面">
         <canvas id="video-canvas"></canvas>
+        <div
+          id="subtitle-overlay"
+          class="subtitle-overlay"
+          aria-live="off"
+          hidden
+        ></div>
         <div id="empty-state" class="empty-state">
           <strong>WildPlay</strong>
           <span>打开一个 MP4、WebM 或 MKV 文件</span>
@@ -19,6 +25,19 @@
           缓冲完成，点击播放
         </button>
       </section>
+
+      <div id="context-menu" class="context-menu" role="menu" hidden>
+        <button
+          id="subtitle-menu-trigger"
+          class="context-menu-item"
+          type="button"
+          role="menuitem"
+          aria-haspopup="menu"
+        >
+          <span>字幕</span><span aria-hidden="true">›</span>
+        </button>
+        <div id="subtitle-menu" class="context-submenu" role="menu" hidden></div>
+      </div>
 
       <section class="controls" aria-label="播放控制">
         <button id="play-pause" type="button" disabled>播放</button>
