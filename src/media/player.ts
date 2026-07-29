@@ -3,6 +3,7 @@ import {
   CanvasSink,
   type Input,
   type Source,
+  type WrappedAudioBuffer,
 } from "mediabunny";
 
 export interface MediaPlayerEvents {
@@ -12,7 +13,8 @@ export interface MediaPlayerEvents {
   onError(error: unknown): void;
 }
 
-const STARTUP_BUFFER_SECONDS = 0.7;
+const STARTUP_BUFFER_SECONDS = 0.25;
+const AUDIO_PREROLL_SECONDS = 1.5;
 const MAX_VIDEO_LATENESS_SECONDS = 0.1;
 
 export class MediaPlayer {
@@ -101,6 +103,7 @@ export class MediaPlayer {
       }
       this.#events.onStatus("buffering");
       await nextPaint();
+      const audioPlayback = await this.#primeAudio(this.#position);
       if (
         this.#disposed ||
         this.#playing ||
@@ -113,7 +116,7 @@ export class MediaPlayer {
         this.#context.currentTime + STARTUP_BUFFER_SECONDS - this.#position;
       this.#events.onState(true);
       void this.#runVideo(generation);
-      void this.#runAudio(generation);
+      void this.#runAudio(generation, audioPlayback);
       void this.#runClock(generation);
     } finally {
       this.#starting = false;
@@ -219,14 +222,19 @@ export class MediaPlayer {
     }
   }
 
-  async #runAudio(generation: number): Promise<void> {
-    if (!this.#audioSink) return;
+  async #runAudio(
+    generation: number,
+    playback: AudioPlayback | null,
+  ): Promise<void> {
+    if (!playback) return;
     const startPosition = this.#position;
     try {
-      for await (const item of this.#audioSink.buffers(
-        startPosition,
-        this.#duration,
-      )) {
+      for (const item of playback.primed) {
+        if (!this.#scheduleAudioBuffer(item, startPosition, generation)) {
+          return;
+        }
+      }
+      for await (const item of playback.iterator) {
         if (!this.#isCurrent(generation)) return;
         while (
           item.timestamp - this.#currentPosition() > 2 &&
@@ -234,27 +242,50 @@ export class MediaPlayer {
         ) {
           await delay(100);
         }
-        if (!this.#isCurrent(generation)) return;
-        const source = this.#context.createBufferSource();
-        source.buffer = item.buffer;
-        source.connect(this.#gain);
-        source.onended = () => this.#audioSources.delete(source);
-        this.#audioSources.add(source);
-        const offset = getAudioBufferOffset(
-          item.timestamp,
-          item.buffer.duration,
-          this.#currentPosition(),
-        );
-        if (offset === null) continue;
-        const when = Math.max(
-          this.#context.currentTime,
-          this.#startedAt + item.timestamp + offset,
-        );
-        source.start(when, offset);
+        if (!this.#scheduleAudioBuffer(item, startPosition, generation)) return;
       }
     } catch (error) {
       if (this.#isCurrent(generation)) this.#fail(error);
     }
+  }
+
+  async #primeAudio(position: number): Promise<AudioPlayback | null> {
+    if (!this.#audioSink) return null;
+    const iterator = this.#audioSink.buffers(position, this.#duration);
+    const primed: WrappedAudioBuffer[] = [];
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) break;
+      primed.push(next.value);
+      const bufferedUntil = next.value.timestamp + next.value.duration;
+      if (bufferedUntil - position >= AUDIO_PREROLL_SECONDS) break;
+    }
+    return { iterator, primed };
+  }
+
+  #scheduleAudioBuffer(
+    item: WrappedAudioBuffer,
+    startPosition: number,
+    generation: number,
+  ): boolean {
+    if (!this.#isCurrent(generation)) return false;
+    const offset = getAudioBufferOffset(
+      item.timestamp,
+      item.buffer.duration,
+      Math.max(startPosition, this.#currentPosition()),
+    );
+    if (offset === null) return true;
+    const source = this.#context.createBufferSource();
+    source.buffer = item.buffer;
+    source.connect(this.#gain);
+    source.onended = () => this.#audioSources.delete(source);
+    this.#audioSources.add(source);
+    const when = Math.max(
+      this.#context.currentTime,
+      this.#startedAt + item.timestamp + offset,
+    );
+    source.start(when, offset);
+    return true;
   }
 
   async #runClock(generation: number): Promise<void> {
@@ -370,6 +401,11 @@ function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
+}
+
+interface AudioPlayback {
+  iterator: AsyncGenerator<WrappedAudioBuffer, void, unknown>;
+  primed: WrappedAudioBuffer[];
 }
 
 export function getAudioBufferOffset(
