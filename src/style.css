@@ -45,6 +45,7 @@ input:disabled {
 }
 
 .player-shell {
+  position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
   width: 100vw;
@@ -53,6 +54,35 @@ input:disabled {
   background:
     radial-gradient(circle at 50% 35%, #182238 0%, transparent 38%),
     #080a0f;
+}
+
+html.is-fullscreen .player-shell {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+html.is-fullscreen .status-bar {
+  display: none;
+}
+
+html.is-fullscreen .controls {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+html.is-fullscreen.fullscreen-controls-hidden {
+  cursor: none;
+}
+
+html.is-fullscreen.fullscreen-controls-hidden .controls {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(100%);
 }
 
 .stage {

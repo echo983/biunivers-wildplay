@@ -37,6 +37,7 @@ let current:
   | undefined;
 let opening = false;
 let scrubbing = false;
+let fullscreenControlsTimer: number | undefined;
 
 openButton.addEventListener("click", () => {
   void runOpen(async () => await client.open());
@@ -52,6 +53,22 @@ fullscreenButton.addEventListener("click", async () => {
   } catch (error) {
     showError(error);
   }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  const fullscreen = document.fullscreenElement !== null;
+  fullscreenButton.textContent = fullscreen ? "退出全屏" : "全屏";
+  document.documentElement.classList.toggle("is-fullscreen", fullscreen);
+  if (fullscreen) showFullscreenControls();
+  else clearFullscreenControlsTimer();
+});
+
+document.addEventListener("pointermove", () => {
+  if (document.fullscreenElement) showFullscreenControls();
+});
+
+document.addEventListener("pointerdown", () => {
+  if (document.fullscreenElement) showFullscreenControls();
 });
 
 playButton.addEventListener("click", () => {
@@ -258,6 +275,22 @@ function formatTime(seconds: number): string {
   const mm = minutes.toString().padStart(2, "0");
   const ss = remaining.toString().padStart(2, "0");
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function showFullscreenControls(): void {
+  clearFullscreenControlsTimer();
+  document.documentElement.classList.remove("fullscreen-controls-hidden");
+  fullscreenControlsTimer = window.setTimeout(() => {
+    document.documentElement.classList.add("fullscreen-controls-hidden");
+  }, 2500);
+}
+
+function clearFullscreenControlsTimer(): void {
+  if (fullscreenControlsTimer !== undefined) {
+    window.clearTimeout(fullscreenControlsTimer);
+    fullscreenControlsTimer = undefined;
+  }
+  document.documentElement.classList.remove("fullscreen-controls-hidden");
 }
 
 function requireElement<T extends HTMLElement>(id: string): T {
