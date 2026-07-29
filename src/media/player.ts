@@ -8,7 +8,7 @@ import {
 export interface MediaPlayerEvents {
   onPosition(position: number, duration: number): void;
   onState(playing: boolean): void;
-  onStatus(status: "buffering" | "playing"): void;
+  onStatus(status: "buffering" | "playing" | "ready"): void;
   onError(error: unknown): void;
 }
 
@@ -85,6 +85,7 @@ export class MediaPlayer {
       return;
     }
     this.#starting = true;
+    const generation = ++this.#generation;
     try {
       if (this.#position >= this.#duration) this.#position = 0;
       await this.#context.resume();
@@ -93,11 +94,16 @@ export class MediaPlayer {
       }
       this.#events.onStatus("buffering");
       await nextPaint();
-      if (this.#disposed || this.#playing) return;
+      if (
+        this.#disposed ||
+        this.#playing ||
+        generation !== this.#generation
+      ) {
+        return;
+      }
       this.#playing = true;
       this.#startedAt =
         this.#context.currentTime + STARTUP_BUFFER_SECONDS - this.#position;
-      const generation = ++this.#generation;
       this.#events.onState(true);
       void this.#runVideo(generation);
       void this.#runAudio(generation);
@@ -125,6 +131,36 @@ export class MediaPlayer {
     this.#gain.gain.value = muted ? 0 : 1;
   }
 
+  async seek(position: number): Promise<void> {
+    if (this.#disposed || !Number.isFinite(position)) return;
+    const target = Math.min(this.#duration, Math.max(0, position));
+    const resume = this.#playing;
+    if (this.#playing) {
+      this.#playing = false;
+      this.#stopAudio();
+      this.#events.onState(false);
+    }
+    this.#position = target;
+    const generation = ++this.#generation;
+    this.#events.onPosition(target, this.#duration);
+    this.#events.onStatus("buffering");
+
+    try {
+      const frame = await this.#videoSink?.getCanvas(target);
+      if (generation !== this.#generation || this.#disposed) return;
+      if (frame) this.#drawFrame(frame.canvas);
+      if (resume) {
+        await this.play();
+      } else {
+        this.#events.onStatus("ready");
+      }
+    } catch (error) {
+      if (generation === this.#generation && !this.#disposed) {
+        this.#events.onError(error);
+      }
+    }
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.pause();
@@ -150,7 +186,13 @@ export class MediaPlayer {
           () => this.#isCurrent(generation),
         );
         if (!this.#isCurrent(generation)) return;
-        context.drawImage(frame.canvas, 0, 0, this.#canvas.width, this.#canvas.height);
+        context.drawImage(
+          frame.canvas,
+          0,
+          0,
+          this.#canvas.width,
+          this.#canvas.height,
+        );
       }
     } catch (error) {
       if (this.#isCurrent(generation)) this.#fail(error);
@@ -224,15 +266,13 @@ export class MediaPlayer {
       this.#audioSink?.getBuffer(0) ?? null,
     ]);
     if (!frame) return;
+    this.#drawFrame(frame.canvas);
+  }
+
+  #drawFrame(frame: HTMLCanvasElement | OffscreenCanvas): void {
     const context = this.#canvas.getContext("2d");
     if (!context) throw new Error("无法创建视频 Canvas");
-    context.drawImage(
-      frame.canvas,
-      0,
-      0,
-      this.#canvas.width,
-      this.#canvas.height,
-    );
+    context.drawImage(frame, 0, 0, this.#canvas.width, this.#canvas.height);
   }
 
   #isCurrent(generation: number): boolean {

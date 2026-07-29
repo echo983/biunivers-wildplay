@@ -35,6 +35,7 @@ let current:
     }
   | undefined;
 let opening = false;
+let scrubbing = false;
 
 openButton.addEventListener("click", () => {
   void runOpen(async () => await client.open());
@@ -65,6 +66,27 @@ playbackHint.addEventListener("click", () => {
 volume.addEventListener("input", () => {
   current?.player.setVolume(Number(volume.value));
   muteButton.textContent = "静音";
+});
+
+timeline.addEventListener("pointerdown", () => {
+  scrubbing = true;
+});
+
+timeline.addEventListener("input", () => {
+  scrubbing = true;
+  time.textContent =
+    `${formatTime(Number(timeline.value))} / ` +
+    `${formatTime(Number(timeline.max))}`;
+});
+
+timeline.addEventListener("change", () => {
+  scrubbing = false;
+  if (!current) return;
+  void current.player.seek(Number(timeline.value));
+});
+
+timeline.addEventListener("pointercancel", () => {
+  scrubbing = false;
 });
 
 muteButton.addEventListener("click", () => {
@@ -154,8 +176,11 @@ async function acceptSession(session: ResourceSession): Promise<void> {
         playButton.textContent = playing ? "暂停" : "播放";
       },
       onStatus: (playbackStatus) => {
-        status.textContent =
-          playbackStatus === "buffering" ? "正在缓冲…" : "正在播放";
+        status.textContent = {
+          buffering: "正在缓冲…",
+          playing: "正在播放",
+          ready: "已定位，点击播放",
+        }[playbackStatus];
         delete status.dataset.failed;
       },
       onError: showError,
@@ -186,6 +211,7 @@ async function acceptSession(session: ResourceSession): Promise<void> {
       : "容器和编码探测通过";
   const playable = unsupported.length === 0 && player.duration > 0;
   playButton.disabled = !playable;
+  timeline.disabled = !playable;
   muteButton.disabled = !playable || !media.info.audio;
   volume.disabled = !playable || !media.info.audio;
   emptyState.hidden = playable;
@@ -209,6 +235,7 @@ function formatBytes(bytes: number): string {
 }
 
 function updatePosition(position: number, duration: number): void {
+  if (scrubbing) return;
   time.textContent = `${formatTime(position)} / ${formatTime(duration)}`;
   timeline.max = String(Math.max(1, duration));
   timeline.value = String(position);
