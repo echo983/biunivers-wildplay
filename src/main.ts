@@ -4,6 +4,7 @@ import {
   formatProbeInfo,
   probeMedia,
   type ProbedMedia,
+  type AudioTrackProbeInfo,
 } from "./media/probe";
 import { MediaPlayer } from "./media/player";
 import { ResourceSessionClient } from "./resourceSession/client";
@@ -26,6 +27,9 @@ const stage = document.querySelector<HTMLElement>(".stage");
 if (!stage) throw new Error("Missing .stage");
 const subtitleOverlay = requireElement<HTMLDivElement>("subtitle-overlay");
 const contextMenu = requireElement<HTMLDivElement>("context-menu");
+const audioMenuTrigger =
+  requireElement<HTMLButtonElement>("audio-menu-trigger");
+const audioMenu = requireElement<HTMLDivElement>("audio-menu");
 const subtitleMenuTrigger =
   requireElement<HTMLButtonElement>("subtitle-menu-trigger");
 const subtitleMenu = requireElement<HTMLDivElement>("subtitle-menu");
@@ -93,7 +97,13 @@ contextMenu.addEventListener("pointerdown", (event) => {
 });
 
 subtitleMenuTrigger.addEventListener("pointerenter", () => {
-  showSubtitleSubmenu();
+  showSubmenu(subtitleMenuTrigger, subtitleMenu);
+  audioMenu.hidden = true;
+});
+
+audioMenuTrigger.addEventListener("pointerenter", () => {
+  showSubmenu(audioMenuTrigger, audioMenu);
+  subtitleMenu.hidden = true;
 });
 
 playButton.addEventListener("click", () => {
@@ -314,8 +324,10 @@ function updatePosition(position: number, duration: number): void {
 }
 
 function openContextMenu(x: number, y: number): void {
+  renderAudioMenu();
   renderSubtitleMenu();
   contextMenu.hidden = false;
+  audioMenu.hidden = true;
   subtitleMenu.hidden = true;
   const width = contextMenu.offsetWidth;
   const height = contextMenu.offsetHeight;
@@ -325,19 +337,74 @@ function openContextMenu(x: number, y: number): void {
 
 function closeContextMenu(): void {
   contextMenu.hidden = true;
+  audioMenu.hidden = true;
   subtitleMenu.hidden = true;
 }
 
-function showSubtitleSubmenu(): void {
-  const bounds = subtitleMenuTrigger.getBoundingClientRect();
-  subtitleMenu.hidden = false;
-  const width = subtitleMenu.offsetWidth;
-  const height = subtitleMenu.offsetHeight;
+function showSubmenu(trigger: HTMLElement, menu: HTMLElement): void {
+  const bounds = trigger.getBoundingClientRect();
+  menu.hidden = false;
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
   const preferredLeft = bounds.right + 3;
-  subtitleMenu.style.left =
+  menu.style.left =
     `${preferredLeft + width <= innerWidth ? preferredLeft : bounds.left - width - 3}px`;
-  subtitleMenu.style.top =
+  menu.style.top =
     `${Math.max(4, Math.min(bounds.top, innerHeight - height - 4))}px`;
+}
+
+function renderAudioMenu(): void {
+  audioMenu.replaceChildren();
+  const tracks = current?.media.audioTracks ?? [];
+  for (const [index, track] of tracks.entries()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "context-menu-item subtitle-menu-item";
+    button.role = "menuitemradio";
+    button.textContent = formatAudioTrack(track, index);
+    button.disabled = !track.decodable;
+    button.setAttribute(
+      "aria-checked",
+      String(current?.player.selectedAudioTrackNumber === track.number),
+    );
+    button.addEventListener("click", () => {
+      closeContextMenu();
+      void selectAudioTrack(track);
+    });
+    audioMenu.append(button);
+  }
+  if (tracks.length === 0) {
+    const empty = document.createElement("button");
+    empty.type = "button";
+    empty.className = "context-menu-item";
+    empty.textContent = "没有音轨";
+    empty.disabled = true;
+    audioMenu.append(empty);
+  }
+}
+
+async function selectAudioTrack(track: AudioTrackProbeInfo): Promise<void> {
+  if (!current || !track.decodable) return;
+  try {
+    status.textContent = "正在切换音轨…";
+    delete status.dataset.failed;
+    await current.player.selectAudioTrack(track.number);
+    renderAudioMenu();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+function formatAudioTrack(
+  track: AudioTrackProbeInfo,
+  index: number,
+): string {
+  const name = track.name?.trim();
+  const language = track.language !== "und" ? track.language : undefined;
+  const identity = name && language
+    ? `${name} · ${language}`
+    : name ?? language ?? `音轨 ${index + 1}`;
+  return `${identity} · ${track.codec} · ${track.channels}ch`;
 }
 
 function renderSubtitleMenu(): void {

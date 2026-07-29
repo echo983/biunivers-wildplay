@@ -36,6 +36,15 @@ export interface AudioProbeInfo {
 export interface ProbedMedia {
   input: Input<CustomSource>;
   info: MediaProbeInfo;
+  audioTracks: AudioTrackProbeInfo[];
+  primaryAudioTrackNumber?: number;
+}
+
+export interface AudioTrackProbeInfo extends AudioProbeInfo {
+  number: number;
+  name?: string;
+  language: string;
+  default: boolean;
 }
 
 export async function probeMedia(
@@ -49,11 +58,12 @@ export async function probeMedia(
 
   try {
     const format = await input.getFormat();
-    const [durationSeconds, videoTrack, audioTrack, mimeType] =
+    const [durationSeconds, videoTrack, audioTrack, audioTracks, mimeType] =
       await Promise.all([
         input.getDurationFromMetadata(),
         input.getPrimaryVideoTrack(),
         input.getPrimaryAudioTrack(),
+        input.getAudioTracks(),
         input.getMimeType(),
       ]);
 
@@ -61,9 +71,10 @@ export async function probeMedia(
       throw new Error("媒体中没有可识别的音视频轨道");
     }
 
-    const [video, audio] = await Promise.all([
+    const [video, audio, probedAudioTracks] = await Promise.all([
       videoTrack ? probeVideo(videoTrack) : null,
       audioTrack ? probeAudio(audioTrack) : null,
+      Promise.all(audioTracks.map(probeAudioTrack)),
     ]);
 
     return {
@@ -75,6 +86,8 @@ export async function probeMedia(
         video,
         audio,
       },
+      audioTracks: probedAudioTracks,
+      primaryAudioTrackNumber: audioTrack?.number,
     };
   } catch (error) {
     input.dispose();
@@ -85,6 +98,24 @@ export async function probeMedia(
       { cause: error },
     );
   }
+}
+
+async function probeAudioTrack(
+  track: InputAudioTrack,
+): Promise<AudioTrackProbeInfo> {
+  const [audio, name, language, disposition] = await Promise.all([
+    probeAudio(track),
+    track.getName(),
+    track.getLanguageCode(),
+    track.getDisposition(),
+  ]);
+  return {
+    ...audio,
+    number: track.number,
+    name: name ?? undefined,
+    language,
+    default: disposition.default,
+  };
 }
 
 export function createMediaInput(
