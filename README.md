@@ -5,7 +5,19 @@ WildPlay 是面向 Biunivers 的纯静态媒体播放器。
 目标是通过 `biunivers.resource-session/1` 按需读取个人文件，在浏览器中播放 MP4、
 WebM 和 MKV，并支持大文件、拖动进度和重复 Seek。
 
-当前状态：V0.1 播放管线设计中。
+当前状态：V0.1 已完成静态包、Resource Session Range 客户端和容器/codec
+探测代码，正在进入真实媒体探测验收。
+
+## 本地开发
+
+```bash
+npm install
+npm test
+npm run build
+```
+
+`npm run build` 会生成并更新根目录的 `index.html` 与 `assets/`。这些文件属于可安装的
+静态应用包，需要随源码提交。
 
 ## 已确定的边界
 

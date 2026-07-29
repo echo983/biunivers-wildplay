@@ -1,0 +1,12 @@
+{
+  "protocol": "biunivers.open-resource/1",
+  "handlers": [
+    {
+      "id": "video-player",
+      "actions": ["open"],
+      "extensions": [".mp4", ".webm", ".mkv"],
+      "mediaTypes": ["video/mp4", "video/webm", "video/x-matroska"],
+      "access": "read"
+    }
+  ]
+}

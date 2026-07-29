@@ -1,6 +1,6 @@
 # WildPlay V0.1 施工计划
 
-状态：待规范评审
+状态：阶段 0—1 完成，阶段 2 施工中
 
 ## 阶段 0：协议与包基线
 
@@ -8,7 +8,7 @@
 - 放入 Biunivers Static App、Open Resource 和 Resource Session 三份协议原文；
 - 建立 Vite + TypeScript 静态构建；
 - 固定依赖版本和许可证清单；
-- 验证 `dist/index.html` 及所有资源使用相对路径。
+- 验证根目录 `index.html` 及所有构建资源使用相对路径，可被宿主直接提供。
 
 ## 阶段 1：Resource Session 客户端
 
@@ -25,7 +25,6 @@
 - 接入 Mediabunny CustomSource；
 - 仅打包 MP4、Matroska 和 WebM 输入；
 - 显示时长、分辨率、轨道与 codec；
-- 记录 Range 次数和实际读取字节，仅用于开发模式；
 - 容器/codec 不支持错误。
 
 出口：用真实 MP4、WebM、MKV 证明探测不完整下载。

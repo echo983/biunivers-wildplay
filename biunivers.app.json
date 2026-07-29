@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "protocol": "biunivers.static-app/1",
+  "appId": "io.github.echo983.biunivers-wildplay",
+  "version": "0.1.0",
+  "name": "WildPlay",
+  "description": "A Resource Session video player for MP4, WebM and MKV.",
+  "license": "MIT",
+  "icon": "icon.svg",
+  "window": {
+    "defaultWidth": 960,
+    "defaultHeight": 640,
+    "minWidth": 560,
+    "minHeight": 360,
+    "desktop": true,
+    "pinned": false
+  },
+  "configuration": []
+}
