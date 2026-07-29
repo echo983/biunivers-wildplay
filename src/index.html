@@ -8,8 +8,15 @@
   </head>
   <body>
     <main class="player-shell">
-      <section class="stage" aria-label="视频画面">
+      <section class="stage" aria-label="媒体播放区域">
         <canvas id="video-canvas"></canvas>
+        <div id="audio-visual" class="audio-visual" hidden>
+          <div class="audio-disc" aria-hidden="true">
+            <span></span>
+          </div>
+          <strong id="audio-title"></strong>
+          <span id="audio-details"></span>
+        </div>
         <div
           id="subtitle-overlay"
           class="subtitle-overlay"
@@ -18,7 +25,7 @@
         ></div>
         <div id="empty-state" class="empty-state">
           <strong>WildPlay</strong>
-          <span>打开一个 MP4、WebM 或 MKV 文件</span>
+          <span>打开一个视频或音频文件</span>
           <button id="open-file" type="button">打开媒体</button>
         </div>
         <button id="playback-hint" class="playback-hint" type="button" hidden>

@@ -1,8 +1,13 @@
 import {
+  ADTS,
   CustomSource,
+  FLAC,
   Input,
   MATROSKA,
+  MP3,
   MP4,
+  OGG,
+  WAVE,
   WEBM,
   type InputAudioTrack,
   type InputVideoTrack,
@@ -10,6 +15,16 @@ import {
 import { ResourceRangeSource } from "../resourceSession/rangeSource";
 
 const SOURCE_CACHE_BYTES = 8 * 1024 * 1024;
+export const SUPPORTED_INPUT_FORMATS = [
+  MP4,
+  WEBM,
+  MATROSKA,
+  MP3,
+  FLAC,
+  ADTS,
+  OGG,
+  WAVE,
+];
 
 export interface MediaProbeInfo {
   container: string;
@@ -129,7 +144,7 @@ export function createMediaInput(
   });
   return new Input({
     source,
-    formats: [MP4, WEBM, MATROSKA],
+    formats: SUPPORTED_INPUT_FORMATS,
   });
 }
 
@@ -176,6 +191,21 @@ export function formatProbeInfo(info: MediaProbeInfo): string {
     parts.push(formatDuration(info.durationSeconds));
   }
   return parts.join(" · ");
+}
+
+export function isAudioOnly(info: MediaProbeInfo): boolean {
+  return info.video === null && info.audio !== null;
+}
+
+export function formatAudioSummary(info: MediaProbeInfo): string {
+  if (!info.audio) return "";
+  const sampleRate =
+    info.audio.sampleRate >= 1000
+      ? `${(info.audio.sampleRate / 1000).toFixed(
+          info.audio.sampleRate % 1000 === 0 ? 0 : 1,
+        )} kHz`
+      : `${info.audio.sampleRate} Hz`;
+  return `${info.audio.codec} · ${info.audio.channels} 声道 · ${sampleRate}`;
 }
 
 function formatDuration(seconds: number): string {

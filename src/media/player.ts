@@ -384,13 +384,18 @@ export class MediaPlayer {
   }
 
   async #configureInput(updateDuration: boolean): Promise<void> {
-    const [videoTrack, primaryAudioTrack, audioTracks, duration] =
-      await Promise.all([
+    const [videoTrack, primaryAudioTrack, audioTracks] = await Promise.all([
       this.#input.getPrimaryVideoTrack(),
       this.#input.getPrimaryAudioTrack(),
       this.#input.getAudioTracks(),
-      updateDuration ? this.#input.getDurationFromMetadata() : null,
     ]);
+    let duration: number | null = null;
+    if (updateDuration) {
+      duration = await this.#input.getDurationFromMetadata();
+      if (duration === null) {
+        duration = await this.#input.computeDuration();
+      }
+    }
     const audioTrack =
       this.#selectedAudioTrackNumber === undefined
         ? primaryAudioTrack

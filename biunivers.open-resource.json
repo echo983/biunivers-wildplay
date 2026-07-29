@@ -7,6 +7,32 @@
       "extensions": [".mp4", ".webm", ".mkv"],
       "mediaTypes": ["video/mp4", "video/webm", "video/x-matroska"],
       "access": "read"
+    },
+    {
+      "id": "audio-player",
+      "actions": ["open"],
+      "extensions": [
+        ".mp3",
+        ".flac",
+        ".m4a",
+        ".aac",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".wav",
+        ".mka"
+      ],
+      "mediaTypes": [
+        "audio/mpeg",
+        "audio/flac",
+        "audio/mp4",
+        "audio/aac",
+        "audio/ogg",
+        "audio/opus",
+        "audio/wav",
+        "audio/x-matroska"
+      ],
+      "access": "read"
     }
   ]
 }

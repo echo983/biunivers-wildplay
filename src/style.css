@@ -108,6 +108,72 @@ html.is-fullscreen.fullscreen-controls-hidden .controls {
   background: #000;
 }
 
+.audio-visual {
+  display: grid;
+  max-width: min(620px, calc(100% - 48px));
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+
+.audio-visual[hidden] {
+  display: none;
+}
+
+.audio-disc {
+  position: relative;
+  display: grid;
+  width: clamp(150px, 28vw, 260px);
+  aspect-ratio: 1;
+  border: 1px solid #3e4b61;
+  border-radius: 50%;
+  place-items: center;
+  background:
+    radial-gradient(circle, #7aa2ff 0 5%, #121722 6% 17%, transparent 18%),
+    repeating-radial-gradient(
+      circle,
+      #20293a 0 3px,
+      #151b27 4px 8px
+    );
+  box-shadow:
+    0 22px 70px rgb(0 0 0 / 48%),
+    inset 0 0 36px rgb(122 162 255 / 10%);
+}
+
+.audio-disc span {
+  width: 14%;
+  aspect-ratio: 1;
+  border: 2px solid #94b3ff;
+  border-radius: 50%;
+}
+
+.audio-visual.is-playing .audio-disc {
+  animation: audio-disc-spin 8s linear infinite;
+}
+
+.audio-visual strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(20px, 4vw, 34px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-visual > span {
+  color: #aeb8cc;
+}
+
+.player-shell.is-audio-only #video-canvas,
+.player-shell.is-audio-only .subtitle-overlay {
+  display: none;
+}
+
+@keyframes audio-disc-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 .empty-state {
   position: absolute;
   display: grid;
