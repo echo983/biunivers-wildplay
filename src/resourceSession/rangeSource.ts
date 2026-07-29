@@ -43,8 +43,11 @@ export class ResourceRangeSource {
     const key = `${start}:${endExclusive}`;
     const existing = this.#inFlight.get(key);
     if (existing) return existing;
-    const request = this.#read(start, endExclusive).finally(() => {
-      this.#inFlight.delete(key);
+    let request: Promise<Uint8Array>;
+    request = this.#read(start, endExclusive).finally(() => {
+      if (this.#inFlight.get(key) === request) {
+        this.#inFlight.delete(key);
+      }
     });
     this.#inFlight.set(key, request);
     return request;
@@ -55,6 +58,11 @@ export class ResourceRangeSource {
     this.#closed = true;
     for (const controller of this.#controllers) controller.abort();
     for (const wake of this.#waiters.splice(0)) wake();
+  }
+
+  cancelPending(): void {
+    for (const controller of this.#controllers) controller.abort();
+    this.#inFlight.clear();
   }
 
   async #read(start: number, endExclusive: number): Promise<Uint8Array> {

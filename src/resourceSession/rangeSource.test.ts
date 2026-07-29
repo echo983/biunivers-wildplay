@@ -77,6 +77,31 @@ describe("ResourceRangeSource", () => {
     await second;
   });
 
+  it("aborts stale reads and allows the same range to be retried", async () => {
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        if (fetchMock.mock.calls.length === 1) {
+          await new Promise<void>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          });
+        }
+        return rangeResponse(0, 3, 100);
+      },
+    );
+    const source = new ResourceRangeSource(session, { fetch: fetchMock });
+    const stale = source.read(0, 4);
+    const staleResult = expect(stale).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    source.cancelPending();
+    await staleResult;
+    await expect(source.read(0, 4)).resolves.toEqual(new Uint8Array(4));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects invalid requests and inconsistent response headers", async () => {
     const source = new ResourceRangeSource(session, {
       fetch: vi.fn(async () =>

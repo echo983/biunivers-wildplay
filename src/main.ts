@@ -1,5 +1,6 @@
 import "./style.css";
 import {
+  createMediaInput,
   formatProbeInfo,
   probeMedia,
   type ProbedMedia,
@@ -100,7 +101,6 @@ void initialize();
 
 window.addEventListener("pagehide", () => {
   current?.player.dispose();
-  current?.media.input.dispose();
   current?.source.close();
   client.dispose();
 });
@@ -170,21 +170,27 @@ async function acceptSession(session: ResourceSession): Promise<void> {
   let player: MediaPlayer;
   try {
     media = await probeMedia(nextSource);
-    player = await MediaPlayer.create(media.input, canvas, {
-      onPosition: updatePosition,
-      onState: (playing) => {
-        playButton.textContent = playing ? "暂停" : "播放";
+    player = await MediaPlayer.create(
+      media.input,
+      canvas,
+      {
+        onPosition: updatePosition,
+        onState: (playing) => {
+          playButton.textContent = playing ? "暂停" : "播放";
+        },
+        onStatus: (playbackStatus) => {
+          status.textContent = {
+            buffering: "正在缓冲…",
+            playing: "正在播放",
+            ready: "已定位，点击播放",
+          }[playbackStatus];
+          delete status.dataset.failed;
+        },
+        onError: showError,
       },
-      onStatus: (playbackStatus) => {
-        status.textContent = {
-          buffering: "正在缓冲…",
-          playing: "正在播放",
-          ready: "已定位，点击播放",
-        }[playbackStatus];
-        delete status.dataset.failed;
-      },
-      onError: showError,
-    });
+      () => createMediaInput(nextSource),
+      () => nextSource.cancelPending(),
+    );
   } catch (error) {
     nextSource.close();
     await client.release(session).catch(() => {});
@@ -194,7 +200,6 @@ async function acceptSession(session: ResourceSession): Promise<void> {
   current = { session, source: nextSource, media, player };
   if (previous) {
     previous.player.dispose();
-    previous.media.input.dispose();
     previous.source.close();
     await client.release(previous.session).catch(() => {});
   }

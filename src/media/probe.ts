@@ -45,16 +45,7 @@ export async function probeMedia(
     throw new Error("空文件不是可播放媒体");
   }
 
-  const source = new CustomSource({
-    getSize: () => rangeSource.size,
-    read: (start, end) => rangeSource.read(start, end),
-    maxCacheSize: SOURCE_CACHE_BYTES,
-    prefetchProfile: "network",
-  });
-  const input = new Input({
-    source,
-    formats: [MP4, WEBM, MATROSKA],
-  });
+  const input = createMediaInput(rangeSource);
 
   try {
     const format = await input.getFormat();
@@ -94,6 +85,21 @@ export async function probeMedia(
       { cause: error },
     );
   }
+}
+
+export function createMediaInput(
+  rangeSource: ResourceRangeSource,
+): Input<CustomSource> {
+  const source = new CustomSource({
+    getSize: () => rangeSource.size,
+    read: (start, end) => rangeSource.read(start, end),
+    maxCacheSize: SOURCE_CACHE_BYTES,
+    prefetchProfile: "network",
+  });
+  return new Input({
+    source,
+    formats: [MP4, WEBM, MATROSKA],
+  });
 }
 
 async function probeVideo(track: InputVideoTrack): Promise<VideoProbeInfo> {

@@ -15,6 +15,9 @@ export interface MediaPlayerEvents {
 const STARTUP_BUFFER_SECONDS = 0.7;
 
 export class MediaPlayer {
+  #input: Input<Source>;
+  readonly #createInput: () => Input<Source>;
+  readonly #cancelPendingReads: () => void;
   readonly #canvas: HTMLCanvasElement;
   readonly #events: MediaPlayerEvents;
   readonly #context = new AudioContext();
@@ -31,9 +34,15 @@ export class MediaPlayer {
   #disposed = false;
 
   private constructor(
+    input: Input<Source>,
+    createInput: () => Input<Source>,
+    cancelPendingReads: () => void,
     canvas: HTMLCanvasElement,
     events: MediaPlayerEvents,
   ) {
+    this.#input = input;
+    this.#createInput = createInput;
+    this.#cancelPendingReads = cancelPendingReads;
     this.#canvas = canvas;
     this.#events = events;
     this.#gain.connect(this.#context.destination);
@@ -43,21 +52,18 @@ export class MediaPlayer {
     input: Input<Source>,
     canvas: HTMLCanvasElement,
     events: MediaPlayerEvents,
+    createInput: () => Input<Source>,
+    cancelPendingReads: () => void,
   ): Promise<MediaPlayer> {
-    const player = new MediaPlayer(canvas, events);
+    const player = new MediaPlayer(
+      input,
+      createInput,
+      cancelPendingReads,
+      canvas,
+      events,
+    );
     try {
-      const [videoTrack, audioTrack, duration] = await Promise.all([
-        input.getPrimaryVideoTrack(),
-        input.getPrimaryAudioTrack(),
-        input.getDurationFromMetadata(),
-      ]);
-      if (videoTrack) {
-        player.#videoSink = new CanvasSink(videoTrack, { poolSize: 3 });
-        player.#canvas.width = await videoTrack.getDisplayWidth();
-        player.#canvas.height = await videoTrack.getDisplayHeight();
-      }
-      if (audioTrack) player.#audioSink = new AudioBufferSink(audioTrack);
-      player.#duration = Math.max(0, duration ?? 0);
+      await player.#configureInput(true);
       await player.#prepareFirstSamples();
       player.#events.onPosition(0, player.#duration);
       return player;
@@ -135,17 +141,23 @@ export class MediaPlayer {
     if (this.#disposed || !Number.isFinite(position)) return;
     const target = Math.min(this.#duration, Math.max(0, position));
     const resume = this.#playing;
+    const generation = ++this.#generation;
     if (this.#playing) {
       this.#playing = false;
-      this.#stopAudio();
       this.#events.onState(false);
+      await this.#fadeOutAndStopAudio();
+      if (generation !== this.#generation || this.#disposed) return;
     }
     this.#position = target;
-    const generation = ++this.#generation;
     this.#events.onPosition(target, this.#duration);
     this.#events.onStatus("buffering");
 
     try {
+      this.#cancelPendingReads();
+      this.#input.dispose();
+      this.#input = this.#createInput();
+      await this.#configureInput(false);
+      if (generation !== this.#generation || this.#disposed) return;
       const frame = await this.#videoSink?.getCanvas(target);
       if (generation !== this.#generation || this.#disposed) return;
       if (frame) this.#drawFrame(frame.canvas);
@@ -165,6 +177,7 @@ export class MediaPlayer {
     if (this.#disposed) return;
     this.pause();
     this.#disposed = true;
+    this.#input.dispose();
     void this.#context.close();
   }
 
@@ -269,6 +282,26 @@ export class MediaPlayer {
     this.#drawFrame(frame.canvas);
   }
 
+  async #configureInput(updateDuration: boolean): Promise<void> {
+    const [videoTrack, audioTrack, duration] = await Promise.all([
+      this.#input.getPrimaryVideoTrack(),
+      this.#input.getPrimaryAudioTrack(),
+      updateDuration ? this.#input.getDurationFromMetadata() : null,
+    ]);
+    this.#videoSink = videoTrack
+      ? new CanvasSink(videoTrack, {
+          poolSize: 3,
+          decoderOptions: { optimizeForLatency: true },
+        })
+      : null;
+    this.#audioSink = audioTrack ? new AudioBufferSink(audioTrack) : null;
+    if (videoTrack) {
+      this.#canvas.width = await videoTrack.getDisplayWidth();
+      this.#canvas.height = await videoTrack.getDisplayHeight();
+    }
+    if (updateDuration) this.#duration = Math.max(0, duration ?? 0);
+  }
+
   #drawFrame(frame: HTMLCanvasElement | OffscreenCanvas): void {
     const context = this.#canvas.getContext("2d");
     if (!context) throw new Error("无法创建视频 Canvas");
@@ -288,6 +321,19 @@ export class MediaPlayer {
       }
     }
     this.#audioSources.clear();
+  }
+
+  async #fadeOutAndStopAudio(): Promise<void> {
+    if (this.#audioSources.size === 0) return;
+    const now = this.#context.currentTime;
+    const restore = this.#gain.gain.value;
+    this.#gain.gain.cancelScheduledValues(now);
+    this.#gain.gain.setValueAtTime(restore, now);
+    this.#gain.gain.linearRampToValueAtTime(0, now + 0.02);
+    await delay(24);
+    this.#stopAudio();
+    this.#gain.gain.cancelScheduledValues(this.#context.currentTime);
+    this.#gain.gain.setValueAtTime(restore, this.#context.currentTime);
   }
 
   #fail(error: unknown): void {
