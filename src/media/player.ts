@@ -4,6 +4,7 @@ import {
   type Input,
   type Source,
   type WrappedAudioBuffer,
+  type WrappedCanvas,
 } from "mediabunny";
 
 export interface MediaPlayerEvents {
@@ -103,7 +104,10 @@ export class MediaPlayer {
       }
       this.#events.onStatus("buffering");
       await nextPaint();
-      const audioPlayback = await this.#primeAudio(this.#position);
+      const [audioPlayback, videoPlayback] = await Promise.all([
+        this.#primeAudio(this.#position),
+        this.#primeVideo(this.#position),
+      ]);
       if (
         this.#disposed ||
         this.#playing ||
@@ -115,7 +119,7 @@ export class MediaPlayer {
       this.#startedAt =
         this.#context.currentTime + STARTUP_BUFFER_SECONDS - this.#position;
       this.#events.onState(true);
-      void this.#runVideo(generation);
+      void this.#runVideo(generation, videoPlayback);
       void this.#runAudio(generation, audioPlayback);
       void this.#runClock(generation);
     } finally {
@@ -162,12 +166,12 @@ export class MediaPlayer {
       this.#input = this.#createInput();
       await this.#configureInput(false);
       if (generation !== this.#generation || this.#disposed) return;
-      const frame = await this.#videoSink?.getCanvas(target);
-      if (generation !== this.#generation || this.#disposed) return;
-      if (frame) this.#drawFrame(frame.canvas);
       if (resume) {
         await this.play();
       } else {
+        const frame = await this.#videoSink?.getCanvas(target);
+        if (generation !== this.#generation || this.#disposed) return;
+        if (frame) this.#drawFrame(frame.canvas);
         this.#events.onStatus("ready");
       }
     } catch (error) {
@@ -185,18 +189,18 @@ export class MediaPlayer {
     void this.#context.close();
   }
 
-  async #runVideo(generation: number): Promise<void> {
-    if (!this.#videoSink) return;
+  async #runVideo(
+    generation: number,
+    playback: VideoPlayback | null,
+  ): Promise<void> {
+    if (!playback) return;
     const context = this.#canvas.getContext("2d");
     if (!context) {
       this.#events.onError(new Error("无法创建视频 Canvas"));
       return;
     }
     try {
-      for await (const frame of this.#videoSink.canvases(
-        this.#position,
-        this.#duration,
-      )) {
+      for await (const frame of playback.iterator) {
         if (!this.#isCurrent(generation)) return;
         await waitUntil(
           () => this.#currentPosition() >= frame.timestamp,
@@ -261,6 +265,14 @@ export class MediaPlayer {
       if (bufferedUntil - position >= AUDIO_PREROLL_SECONDS) break;
     }
     return { iterator, primed };
+  }
+
+  async #primeVideo(position: number): Promise<VideoPlayback | null> {
+    if (!this.#videoSink) return null;
+    const iterator = this.#videoSink.canvases(position, this.#duration);
+    const first = await iterator.next();
+    if (!first.done) this.#drawFrame(first.value.canvas);
+    return { iterator };
   }
 
   #scheduleAudioBuffer(
@@ -406,6 +418,10 @@ function nextPaint(): Promise<void> {
 interface AudioPlayback {
   iterator: AsyncGenerator<WrappedAudioBuffer, void, unknown>;
   primed: WrappedAudioBuffer[];
+}
+
+interface VideoPlayback {
+  iterator: AsyncGenerator<WrappedCanvas, void, unknown>;
 }
 
 export function getAudioBufferOffset(
