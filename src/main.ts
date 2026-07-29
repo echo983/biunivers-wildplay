@@ -4,6 +4,7 @@ import {
   probeMedia,
   type ProbedMedia,
 } from "./media/probe";
+import { MediaPlayer } from "./media/player";
 import { ResourceSessionClient } from "./resourceSession/client";
 import { ResourceRangeSource } from "./resourceSession/rangeSource";
 import {
@@ -12,6 +13,13 @@ import {
 } from "./resourceSession/types";
 
 const openButton = requireElement<HTMLButtonElement>("open-file");
+const playButton = requireElement<HTMLButtonElement>("play-pause");
+const muteButton = requireElement<HTMLButtonElement>("mute");
+const volume = requireElement<HTMLInputElement>("volume");
+const timeline = requireElement<HTMLInputElement>("timeline");
+const time = requireElement<HTMLSpanElement>("time");
+const canvas = requireElement<HTMLCanvasElement>("video-canvas");
+const emptyState = requireElement<HTMLDivElement>("empty-state");
 const fullscreenButton = requireElement<HTMLButtonElement>("fullscreen");
 const status = requireElement<HTMLSpanElement>("status");
 const filename = requireElement<HTMLSpanElement>("filename");
@@ -22,6 +30,7 @@ let current:
       session: ResourceSession;
       source: ResourceRangeSource;
       media: ProbedMedia;
+      player: MediaPlayer;
     }
   | undefined;
 let opening = false;
@@ -38,10 +47,28 @@ fullscreenButton.addEventListener("click", async () => {
   }
 });
 
+playButton.addEventListener("click", () => {
+  if (!current) return;
+  if (current.player.playing) current.player.pause();
+  else void current.player.play().catch(showError);
+});
+
+volume.addEventListener("input", () => {
+  current?.player.setVolume(Number(volume.value));
+  muteButton.textContent = "静音";
+});
+
+muteButton.addEventListener("click", () => {
+  const muted = muteButton.textContent === "取消静音";
+  current?.player.setMuted(!muted);
+  muteButton.textContent = muted ? "静音" : "取消静音";
+});
+
 client.onLaunchAvailable(() => void claimPendingLaunch());
 void initialize();
 
 window.addEventListener("pagehide", () => {
+  current?.player.dispose();
   current?.media.input.dispose();
   current?.source.close();
   client.dispose();
@@ -109,16 +136,25 @@ async function acceptSession(session: ResourceSession): Promise<void> {
   status.textContent = "正在探测媒体…";
   delete status.dataset.failed;
   let media: ProbedMedia;
+  let player: MediaPlayer;
   try {
     media = await probeMedia(nextSource);
+    player = await MediaPlayer.create(media.input, canvas, {
+      onPosition: updatePosition,
+      onState: (playing) => {
+        playButton.textContent = playing ? "暂停" : "播放";
+      },
+      onError: showError,
+    });
   } catch (error) {
     nextSource.close();
     await client.release(session).catch(() => {});
     throw error;
   }
   const previous = current;
-  current = { session, source: nextSource, media };
+  current = { session, source: nextSource, media, player };
   if (previous) {
+    previous.player.dispose();
     previous.media.input.dispose();
     previous.source.close();
     await client.release(previous.session).catch(() => {});
@@ -134,6 +170,11 @@ async function acceptSession(session: ResourceSession): Promise<void> {
     unsupported.length > 0
       ? `容器解析成功，但浏览器不支持${unsupported.join("和")}编码`
       : "容器和编码探测通过";
+  const playable = unsupported.length === 0 && player.duration > 0;
+  playButton.disabled = !playable;
+  muteButton.disabled = !playable || !media.info.audio;
+  volume.disabled = !playable || !media.info.audio;
+  emptyState.hidden = playable;
 }
 
 function showError(error: unknown): void {
@@ -147,6 +188,22 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
+}
+
+function updatePosition(position: number, duration: number): void {
+  time.textContent = `${formatTime(position)} / ${formatTime(duration)}`;
+  timeline.max = String(Math.max(1, duration));
+  timeline.value = String(position);
+}
+
+function formatTime(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remaining = total % 60;
+  const mm = minutes.toString().padStart(2, "0");
+  const ss = remaining.toString().padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 function requireElement<T extends HTMLElement>(id: string): T {

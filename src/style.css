@@ -79,6 +79,10 @@ input:disabled {
   text-align: center;
 }
 
+.empty-state[hidden] {
+  display: none;
+}
+
 .empty-state strong {
   color: #fff;
   font-size: clamp(28px, 7vw, 56px);
