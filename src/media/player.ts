@@ -27,6 +27,7 @@ export class MediaPlayer {
   #startedAt = 0;
   #generation = 0;
   #playing = false;
+  #starting = false;
   #disposed = false;
 
   private constructor(
@@ -74,21 +75,35 @@ export class MediaPlayer {
   }
 
   async play(): Promise<void> {
-    if (this.#disposed || this.#playing || this.#duration === 0) return;
-    if (this.#position >= this.#duration) this.#position = 0;
-    await this.#context.resume();
-    if (this.#context.state !== "running") {
-      throw new Error("浏览器阻止了自动播放，请点击“播放”");
+    if (
+      this.#disposed ||
+      this.#playing ||
+      this.#starting ||
+      this.#duration === 0
+    ) {
+      return;
     }
-    this.#playing = true;
-    this.#startedAt =
-      this.#context.currentTime + STARTUP_BUFFER_SECONDS - this.#position;
-    const generation = ++this.#generation;
-    this.#events.onState(true);
-    this.#events.onStatus("buffering");
-    void this.#runVideo(generation);
-    void this.#runAudio(generation);
-    void this.#runClock(generation);
+    this.#starting = true;
+    try {
+      if (this.#position >= this.#duration) this.#position = 0;
+      await this.#context.resume();
+      if (this.#context.state !== "running") {
+        throw new Error("浏览器阻止了自动播放，请点击“播放”");
+      }
+      this.#events.onStatus("buffering");
+      await nextPaint();
+      if (this.#disposed || this.#playing) return;
+      this.#playing = true;
+      this.#startedAt =
+        this.#context.currentTime + STARTUP_BUFFER_SECONDS - this.#position;
+      const generation = ++this.#generation;
+      this.#events.onState(true);
+      void this.#runVideo(generation);
+      void this.#runAudio(generation);
+      void this.#runClock(generation);
+    } finally {
+      this.#starting = false;
+    }
   }
 
   pause(): void {
@@ -234,4 +249,10 @@ async function waitUntil(
   while (!ready() && active()) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
+}
+
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
