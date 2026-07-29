@@ -23,7 +23,7 @@ export class ResourceRangeSource {
     options: ResourceRangeSourceOptions = {},
   ) {
     this.size = session.metadata.size;
-    this.#fetch = options.fetch ?? fetch;
+    this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#maxConcurrent = options.maxConcurrent ?? 4;
     if (
       !Number.isSafeInteger(this.size) ||
