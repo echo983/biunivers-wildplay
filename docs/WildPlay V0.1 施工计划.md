@@ -54,7 +54,9 @@
 - MP4 前后 Seek、暂停态 Seek 和连续快速 Seek 已通过真实验收；
 - Seek 时会取消旧 Range、销毁旧 Input，并重建 decoder/sink；
 - 过期音频块和视频帧不会追赶播放；
-- WebM、MKV 和 codec 矩阵仍待补充样本验收。
+- MKV 真实播放与 Seek 已通过；
+- WebM 保持实现支持，但不作为 V0.1 人工验收门槛；
+- 更广泛 codec/browser 矩阵留待后续版本。
 
 ## 阶段 5：产品验收
 
@@ -70,7 +72,7 @@
 - 全屏开关、控制条自动收起和全屏溢出修复通过；
 - Biunivers Resource Session + R2 精确 S3 Range GET 通过；
 - 宿主重启、应用停用/更新和长时间播放矩阵沿用后续回归，不阻断首轮代码合并；
-- 键盘快捷键、WebM/MKV 样本和 V0.1 tag 尚未完成。
+- 键盘快捷键、更广泛 codec/browser 矩阵和 V0.1 tag 尚未完成。
 
 ## 合并门槛
 

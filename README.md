@@ -6,8 +6,8 @@ WildPlay 是面向 Biunivers 的纯静态媒体播放器。
 WebM 和 MKV，并支持大文件、拖动进度和重复 Seek。
 
 当前状态：V0.1 已完成 MP4 容器探测、基础播放、真实预缓冲、Seek、音量、静音和全屏，
-并通过 Biunivers + Cloudflare R2 真实链路首轮验收。WebM、MKV 和更广泛 codec 矩阵仍待
-补充验收。
+并通过 Biunivers + Cloudflare R2 真实链路首轮验收。MP4 和 MKV 已完成真实播放与 Seek
+验收；WebM 保持协议与实现支持，但不作为 V0.1 人工验收门槛。
 
 ## 本地开发
 
