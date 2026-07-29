@@ -188,19 +188,26 @@ export async function loadSubtitleWindow(
     if (cue.time > endTime && offsets.length > 0) break;
     if (offsets.at(-1) !== cue.clusterOffset) offsets.push(cue.clusterOffset);
   }
-  const result: SubtitleCue[] = [];
-  for (const offset of offsets) {
-    const cluster = await readWholeElement(source, offset, MAX_CLUSTER_BYTES);
-    if (cluster.element.id !== ID.CLUSTER) throw invalid("Cue 没有指向 Cluster");
-    result.push(
-      ...parseCluster(
-        cluster.bytes,
-        cluster.element,
-        track,
-        index.timestampScaleNanoseconds,
-      ),
-    );
-  }
+  const result = (
+    await Promise.all(
+      offsets.map(async (offset) => {
+        const cluster = await readWholeElement(
+          source,
+          offset,
+          MAX_CLUSTER_BYTES,
+        );
+        if (cluster.element.id !== ID.CLUSTER) {
+          throw invalid("Cue 没有指向 Cluster");
+        }
+        return parseCluster(
+          cluster.bytes,
+          cluster.element,
+          track,
+          index.timestampScaleNanoseconds,
+        );
+      }),
+    )
+  ).flat();
   return normalizeCueEnds(
     result
       .filter((cue) => cue.end >= position - 1 && cue.start <= endTime)

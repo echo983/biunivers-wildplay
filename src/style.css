@@ -186,9 +186,20 @@ html.is-fullscreen.fullscreen-controls-hidden .controls {
   border: 0;
 }
 
-.context-menu-item[aria-checked="true"]::before {
+.subtitle-menu-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  justify-content: initial;
+}
+
+.subtitle-menu-item::before {
+  content: "";
+  width: 14px;
+}
+
+.subtitle-menu-item[aria-checked="true"]::before {
   content: "●";
-  margin-right: 6px;
   color: #8eb0ff;
 }
 

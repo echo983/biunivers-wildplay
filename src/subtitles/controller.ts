@@ -73,7 +73,16 @@ export class SubtitleController {
   }
 
   updatePosition(position: number): void {
+    const jumped = Math.abs(position - this.#position) > 2;
     this.#position = position;
+    if (jumped && this.#selected) {
+      this.#generation += 1;
+      this.#loading = false;
+      this.#cues = [];
+      this.#loadedUntil = -1;
+      this.#overlay.textContent = "";
+      this.#overlay.hidden = true;
+    }
     const cue = this.#cues.find(
       (candidate) => candidate.start <= position && position < candidate.end,
     );
@@ -82,7 +91,7 @@ export class SubtitleController {
     if (
       this.#selected &&
       !this.#loading &&
-      (this.#loadedUntil < 0 || position > this.#loadedUntil - 10)
+      (this.#loadedUntil < 0 || position > this.#loadedUntil - 3)
     ) {
       void this.#load();
     }
@@ -110,6 +119,7 @@ export class SubtitleController {
         index,
         track,
         position,
+        12,
       );
       if (
         this.#disposed ||
@@ -119,7 +129,7 @@ export class SubtitleController {
         return;
       }
       this.#cues = cues;
-      this.#loadedUntil = Math.max(position + 15, ...cues.map((cue) => cue.end));
+      this.#loadedUntil = Math.max(position + 5, ...cues.map((cue) => cue.end));
       this.updatePosition(this.#position);
     } catch (error) {
       if (generation === this.#generation && !this.#disposed) {

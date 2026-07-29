@@ -380,7 +380,7 @@ function createSubtitleItem(
 ): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "context-menu-item";
+  button.className = "context-menu-item subtitle-menu-item";
   button.role = "menuitemradio";
   button.textContent = label;
   button.setAttribute(
