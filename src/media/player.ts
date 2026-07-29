@@ -8,8 +8,11 @@ import {
 export interface MediaPlayerEvents {
   onPosition(position: number, duration: number): void;
   onState(playing: boolean): void;
+  onStatus(status: "buffering" | "playing"): void;
   onError(error: unknown): void;
 }
+
+const STARTUP_BUFFER_SECONDS = 0.7;
 
 export class MediaPlayer {
   readonly #canvas: HTMLCanvasElement;
@@ -74,10 +77,15 @@ export class MediaPlayer {
     if (this.#disposed || this.#playing || this.#duration === 0) return;
     if (this.#position >= this.#duration) this.#position = 0;
     await this.#context.resume();
+    if (this.#context.state !== "running") {
+      throw new Error("浏览器阻止了自动播放，请点击“播放”");
+    }
     this.#playing = true;
-    this.#startedAt = this.#context.currentTime - this.#position;
+    this.#startedAt =
+      this.#context.currentTime + STARTUP_BUFFER_SECONDS - this.#position;
     const generation = ++this.#generation;
     this.#events.onState(true);
+    this.#events.onStatus("buffering");
     void this.#runVideo(generation);
     void this.#runAudio(generation);
     void this.#runClock(generation);
@@ -168,8 +176,13 @@ export class MediaPlayer {
   }
 
   async #runClock(generation: number): Promise<void> {
+    let started = false;
     while (this.#isCurrent(generation)) {
       this.#position = this.#currentPosition();
+      if (!started && this.#context.currentTime >= this.#startedAt) {
+        started = true;
+        this.#events.onStatus("playing");
+      }
       this.#events.onPosition(this.#position, this.#duration);
       if (this.#position >= this.#duration) {
         this.#playing = false;

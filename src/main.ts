@@ -144,6 +144,11 @@ async function acceptSession(session: ResourceSession): Promise<void> {
       onState: (playing) => {
         playButton.textContent = playing ? "暂停" : "播放";
       },
+      onStatus: (playbackStatus) => {
+        status.textContent =
+          playbackStatus === "buffering" ? "正在缓冲…" : "正在播放";
+        delete status.dataset.failed;
+      },
       onError: showError,
     });
   } catch (error) {
@@ -175,6 +180,15 @@ async function acceptSession(session: ResourceSession): Promise<void> {
   muteButton.disabled = !playable || !media.info.audio;
   volume.disabled = !playable || !media.info.audio;
   emptyState.hidden = playable;
+  if (playable) {
+    void player.play().catch((error) => {
+      status.textContent =
+        error instanceof Error
+          ? error.message
+          : "自动播放失败，请点击“播放”";
+      delete status.dataset.failed;
+    });
+  }
 }
 
 function showError(error: unknown): void {
