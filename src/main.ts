@@ -20,6 +20,7 @@ const timeline = requireElement<HTMLInputElement>("timeline");
 const time = requireElement<HTMLSpanElement>("time");
 const canvas = requireElement<HTMLCanvasElement>("video-canvas");
 const emptyState = requireElement<HTMLDivElement>("empty-state");
+const playbackHint = requireElement<HTMLButtonElement>("playback-hint");
 const fullscreenButton = requireElement<HTMLButtonElement>("fullscreen");
 const status = requireElement<HTMLSpanElement>("status");
 const filename = requireElement<HTMLSpanElement>("filename");
@@ -50,7 +51,15 @@ fullscreenButton.addEventListener("click", async () => {
 playButton.addEventListener("click", () => {
   if (!current) return;
   if (current.player.playing) current.player.pause();
-  else void current.player.play().catch(showError);
+  else {
+    playbackHint.hidden = true;
+    void current.player.play().catch(showError);
+  }
+});
+
+playbackHint.addEventListener("click", () => {
+  playbackHint.hidden = true;
+  void current?.player.play().catch(showError);
 });
 
 volume.addEventListener("input", () => {
@@ -181,13 +190,8 @@ async function acceptSession(session: ResourceSession): Promise<void> {
   volume.disabled = !playable || !media.info.audio;
   emptyState.hidden = playable;
   if (playable) {
-    void player.play().catch((error) => {
-      status.textContent =
-        error instanceof Error
-          ? error.message
-          : "自动播放失败，请点击“播放”";
-      delete status.dataset.failed;
-    });
+    playbackHint.hidden = false;
+    status.textContent = "缓冲完成，点击播放";
   }
 }
 

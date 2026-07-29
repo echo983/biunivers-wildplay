@@ -58,6 +58,7 @@ export class MediaPlayer {
       }
       if (audioTrack) player.#audioSink = new AudioBufferSink(audioTrack);
       player.#duration = Math.max(0, duration ?? 0);
+      await player.#prepareFirstSamples();
       player.#events.onPosition(0, player.#duration);
       return player;
     } catch (error) {
@@ -88,7 +89,7 @@ export class MediaPlayer {
       if (this.#position >= this.#duration) this.#position = 0;
       await this.#context.resume();
       if (this.#context.state !== "running") {
-        throw new Error("浏览器阻止了自动播放，请点击“播放”");
+        throw new Error("浏览器阻止了播放，请再次点击“播放”");
       }
       this.#events.onStatus("buffering");
       await nextPaint();
@@ -214,6 +215,23 @@ export class MediaPlayer {
     return Math.min(
       this.#duration,
       Math.max(0, this.#context.currentTime - this.#startedAt),
+    );
+  }
+
+  async #prepareFirstSamples(): Promise<void> {
+    const [frame] = await Promise.all([
+      this.#videoSink?.getCanvas(0) ?? null,
+      this.#audioSink?.getBuffer(0) ?? null,
+    ]);
+    if (!frame) return;
+    const context = this.#canvas.getContext("2d");
+    if (!context) throw new Error("无法创建视频 Canvas");
+    context.drawImage(
+      frame.canvas,
+      0,
+      0,
+      this.#canvas.width,
+      this.#canvas.height,
     );
   }
 

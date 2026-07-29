@@ -83,6 +83,19 @@ input:disabled {
   display: none;
 }
 
+.playback-hint {
+  position: absolute;
+  padding: 10px 16px;
+  background: rgb(20 25 35 / 92%);
+  border-color: #60749d;
+  border-radius: 999px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+}
+
+.playback-hint[hidden] {
+  display: none;
+}
+
 .empty-state strong {
   color: #fff;
   font-size: clamp(28px, 7vw, 56px);
