@@ -30,6 +30,16 @@
 
       <div id="context-menu" class="context-menu" role="menu" hidden>
         <button
+          id="audio-menu-trigger"
+          class="context-menu-item"
+          type="button"
+          role="menuitem"
+          aria-haspopup="menu"
+        >
+          <span>音轨</span><span aria-hidden="true">›</span>
+        </button>
+        <div id="audio-menu" class="context-submenu" role="menu" hidden></div>
+        <button
           id="subtitle-menu-trigger"
           class="context-menu-item"
           type="button"

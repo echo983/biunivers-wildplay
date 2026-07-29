@@ -29,6 +29,7 @@ export class MediaPlayer {
   readonly #audioSources = new Set<AudioBufferSourceNode>();
   #videoSink: CanvasSink | null = null;
   #audioSink: AudioBufferSink | null = null;
+  #selectedAudioTrackNumber: number | undefined;
   #duration = 0;
   #position = 0;
   #startedAt = 0;
@@ -83,6 +84,10 @@ export class MediaPlayer {
 
   get duration(): number {
     return this.#duration;
+  }
+
+  get selectedAudioTrackNumber(): number | undefined {
+    return this.#selectedAudioTrackNumber;
   }
 
   async play(): Promise<void> {
@@ -178,6 +183,48 @@ export class MediaPlayer {
       if (generation === this.#generation && !this.#disposed) {
         this.#events.onError(error);
       }
+    }
+  }
+
+  async selectAudioTrack(trackNumber: number): Promise<void> {
+    if (
+      this.#disposed ||
+      !Number.isSafeInteger(trackNumber) ||
+      trackNumber < 1 ||
+      trackNumber === this.#selectedAudioTrackNumber
+    ) {
+      return;
+    }
+    const previousTrackNumber = this.#selectedAudioTrackNumber;
+    const resume = this.#playing;
+    const position = this.#playing ? this.#currentPosition() : this.#position;
+    const generation = ++this.#generation;
+    this.#playing = false;
+    this.#events.onState(false);
+    await this.#fadeOutAndStopAudio();
+    if (generation !== this.#generation || this.#disposed) return;
+    this.#position = position;
+    this.#selectedAudioTrackNumber = trackNumber;
+    this.#events.onPosition(position, this.#duration);
+    this.#events.onStatus("buffering");
+    try {
+      this.#input.dispose();
+      this.#input = this.#createInput();
+      await this.#configureInput(false);
+      if (generation !== this.#generation || this.#disposed) return;
+      if (resume) await this.play();
+      else this.#events.onStatus("ready");
+    } catch (error) {
+      if (generation !== this.#generation || this.#disposed) return;
+      this.#selectedAudioTrackNumber = previousTrackNumber;
+      try {
+        this.#input.dispose();
+        this.#input = this.#createInput();
+        await this.#configureInput(false);
+      } catch {
+        // Keep the original switching error as the useful failure.
+      }
+      this.#events.onError(error);
     }
   }
 
@@ -337,11 +384,27 @@ export class MediaPlayer {
   }
 
   async #configureInput(updateDuration: boolean): Promise<void> {
-    const [videoTrack, audioTrack, duration] = await Promise.all([
+    const [videoTrack, primaryAudioTrack, audioTracks, duration] =
+      await Promise.all([
       this.#input.getPrimaryVideoTrack(),
       this.#input.getPrimaryAudioTrack(),
+      this.#input.getAudioTracks(),
       updateDuration ? this.#input.getDurationFromMetadata() : null,
     ]);
+    const audioTrack =
+      this.#selectedAudioTrackNumber === undefined
+        ? primaryAudioTrack
+        : findAudioTrackByNumber(
+            audioTracks,
+            this.#selectedAudioTrackNumber,
+          );
+    if (
+      this.#selectedAudioTrackNumber !== undefined &&
+      audioTrack === undefined
+    ) {
+      throw new Error("所选音轨在重建后的媒体输入中不存在");
+    }
+    this.#selectedAudioTrackNumber = audioTrack?.number;
     this.#videoSink = videoTrack
       ? new CanvasSink(videoTrack, {
           poolSize: 3,
@@ -431,4 +494,11 @@ export function getAudioBufferOffset(
 ): number | null {
   const offset = Math.max(0, position - timestamp);
   return offset >= duration ? null : offset;
+}
+
+export function findAudioTrackByNumber<T extends { number: number }>(
+  tracks: readonly T[],
+  trackNumber: number,
+): T | undefined {
+  return tracks.find((track) => track.number === trackNumber);
 }

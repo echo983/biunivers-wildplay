@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAudioBufferOffset } from "./player";
+import { findAudioTrackByNumber, getAudioBufferOffset } from "./player";
 
 describe("getAudioBufferOffset", () => {
   it("keeps future buffers intact", () => {
@@ -13,5 +13,19 @@ describe("getAudioBufferOffset", () => {
   it("drops buffers that have completely expired", () => {
     expect(getAudioBufferOffset(10, 0.5, 10.5)).toBeNull();
     expect(getAudioBufferOffset(10, 0.5, 12)).toBeNull();
+  });
+});
+
+describe("findAudioTrackByNumber", () => {
+  it("restores the same audio track on a rebuilt input", () => {
+    const tracks = [
+      { number: 1, language: "jpn" },
+      { number: 2, language: "eng" },
+    ];
+    expect(findAudioTrackByNumber(tracks, 2)).toEqual({
+      number: 2,
+      language: "eng",
+    });
+    expect(findAudioTrackByNumber(tracks, 3)).toBeUndefined();
   });
 });
