@@ -1,6 +1,6 @@
 # WildPlay V0.2 MKV 文本字幕设计
 
-状态：施工基线
+状态：已完成，归档
 
 日期：2026-07-29
 
@@ -146,3 +146,12 @@ ResourceRangeSource
   `S_TEXT/SSA` 和 `S_TEXT/WEBVTT` 的载荷约定；
 - Mediabunny 1.51.0 的公开类型声明：当前输入轨 API 边界。
 
+## 10. 实现后说明
+
+真实 MKV 验收发现 `TrackUID` 可能是超过 JavaScript 安全整数范围的 64 位值。该字段不是
+字幕选择、定位或读取所需字段，最终实现不解析它；TrackNumber、时间、元素长度和文件位置
+仍执行严格边界检查。
+
+字幕窗口最终采用当前位置附近 12 秒的有限预取。多个 Cluster 通过共享
+`ResourceRangeSource` 并发读取，仍受全局 4 并发限制。播放位置发生明显跳变时立即递增
+subtitle generation、清空旧 cue 并重新定位，避免 Seek 后等待旧窗口或显示旧字幕。
