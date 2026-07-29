@@ -134,6 +134,79 @@ html.is-fullscreen.fullscreen-controls-hidden .controls {
   display: none;
 }
 
+.subtitle-overlay {
+  position: absolute;
+  right: 6%;
+  bottom: clamp(28px, 8%, 72px);
+  left: 6%;
+  z-index: 1;
+  color: #fff;
+  font-size: clamp(18px, 3.2vw, 34px);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  text-shadow:
+    0 2px 2px #000,
+    1px 0 2px #000,
+    -1px 0 2px #000;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+.subtitle-overlay[hidden] {
+  display: none;
+}
+
+.context-menu,
+.context-submenu {
+  position: fixed;
+  z-index: 20;
+  min-width: 180px;
+  padding: 5px;
+  background: rgb(24 28 37 / 98%);
+  border: 1px solid #444d5e;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 48%);
+}
+
+.context-menu[hidden],
+.context-submenu[hidden] {
+  display: none;
+}
+
+.context-menu-item {
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 9px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.subtitle-menu-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  justify-content: initial;
+}
+
+.subtitle-menu-item::before {
+  content: "";
+  width: 14px;
+}
+
+.subtitle-menu-item[aria-checked="true"]::before {
+  content: "●";
+  color: #8eb0ff;
+}
+
+.context-menu-item:disabled {
+  opacity: 0.55;
+}
+
 .empty-state strong {
   color: #fff;
   font-size: clamp(28px, 7vw, 56px);
