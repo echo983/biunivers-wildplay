@@ -17,6 +17,7 @@ const id = {
   tracks: [0x16, 0x54, 0xae, 0x6b],
   trackEntry: [0xae],
   trackNumber: [0xd7],
+  trackUid: [0x73, 0xc5],
   trackType: [0x83],
   flagDefault: [0x88],
   name: [0x53, 0x6e],
@@ -42,6 +43,10 @@ describe("Matroska subtitle probe", () => {
       id.trackEntry,
       join(
         uint(id.trackNumber, 3),
+        element(
+          id.trackUid,
+          Uint8Array.of(0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88),
+        ),
         uint(id.trackType, 17),
         text(id.codecId, "S_TEXT/UTF8"),
         text(id.name, "简体中文"),

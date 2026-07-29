@@ -347,8 +347,7 @@ function renderSubtitleMenu(): void {
   for (const [index, track] of supported.entries()) {
     subtitleMenu.append(
       createSubtitleItem(
-        track.name?.trim() ||
-          (track.language !== "und" ? track.language : `字幕 ${index + 1}`),
+        formatSubtitleTrack(track, index),
         track.number,
       ),
     );
@@ -363,6 +362,16 @@ function renderSubtitleMenu(): void {
     empty.disabled = true;
     subtitleMenu.append(empty);
   }
+}
+
+function formatSubtitleTrack(
+  track: MatroskaSubtitleTrack,
+  index: number,
+): string {
+  const name = track.name?.trim();
+  const language = track.language !== "und" ? track.language : undefined;
+  if (name && language) return `${name} · ${language}`;
+  return name ?? language ?? `字幕 ${index + 1}`;
 }
 
 function createSubtitleItem(

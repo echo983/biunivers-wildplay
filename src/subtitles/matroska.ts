@@ -21,7 +21,6 @@ const ID = {
   TRACKS: 0x1654ae6b,
   TRACK_ENTRY: 0xae,
   TRACK_NUMBER: 0xd7,
-  TRACK_UID: 0x73c5,
   TRACK_TYPE: 0x83,
   FLAG_DEFAULT: 0x88,
   NAME: 0x536e,
@@ -63,7 +62,6 @@ export interface RandomAccessReader {
 
 export interface MatroskaSubtitleTrack {
   number: number;
-  uid?: number;
   codecId: string;
   name?: string;
   language: string;
@@ -250,7 +248,6 @@ function parseTracks(
     const supportedCodec = TEXT_CODECS.has(codecId);
     result.push({
       number,
-      uid: childValue(bytes, entry, ID.TRACK_UID, readUnsigned),
       codecId,
       name: childValue(bytes, entry, ID.NAME, readText),
       language:
