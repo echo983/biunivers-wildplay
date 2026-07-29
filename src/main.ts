@@ -1,7 +1,9 @@
 import "./style.css";
 import {
   createMediaInput,
+  formatAudioSummary,
   formatProbeInfo,
+  isAudioOnly,
   probeMedia,
   type ProbedMedia,
   type AudioTrackProbeInfo,
@@ -23,8 +25,12 @@ const volume = requireElement<HTMLInputElement>("volume");
 const timeline = requireElement<HTMLInputElement>("timeline");
 const time = requireElement<HTMLSpanElement>("time");
 const canvas = requireElement<HTMLCanvasElement>("video-canvas");
+const playerShell = requireSelector<HTMLElement>(".player-shell");
 const stage = document.querySelector<HTMLElement>(".stage");
 if (!stage) throw new Error("Missing .stage");
+const audioVisual = requireElement<HTMLDivElement>("audio-visual");
+const audioTitle = requireElement<HTMLElement>("audio-title");
+const audioDetails = requireElement<HTMLElement>("audio-details");
 const subtitleOverlay = requireElement<HTMLDivElement>("subtitle-overlay");
 const contextMenu = requireElement<HTMLDivElement>("context-menu");
 const audioMenuTrigger =
@@ -235,6 +241,7 @@ async function acceptSession(session: ResourceSession): Promise<void> {
         onPosition: updatePosition,
         onState: (playing) => {
           playButton.textContent = playing ? "暂停" : "播放";
+          audioVisual.classList.toggle("is-playing", playing);
         },
         onStatus: (playbackStatus) => {
           status.textContent = {
@@ -249,6 +256,9 @@ async function acceptSession(session: ResourceSession): Promise<void> {
       () => createMediaInput(nextSource),
       () => nextSource.cancelPending(),
     );
+    if (media.info.durationSeconds === null) {
+      media.info.durationSeconds = player.duration;
+    }
     subtitles = new SubtitleController(nextSource, subtitleOverlay, {
       onTracks: (tracks) => {
         if (current?.source !== nextSource) return;
@@ -269,16 +279,29 @@ async function acceptSession(session: ResourceSession): Promise<void> {
     throw error;
   }
   const previous = current;
-  current = { session, source: nextSource, media, player, subtitles };
+  const audioOnly = isAudioOnly(media.info);
+  current = {
+    session,
+    source: nextSource,
+    media,
+    player,
+    subtitles,
+  };
   subtitleTracks = [];
   renderSubtitleMenu();
-  void subtitles.initialize();
+  if (!audioOnly) void subtitles.initialize();
   if (previous) {
     previous.player.dispose();
     previous.subtitles.dispose();
     previous.source.close();
     await client.release(previous.session).catch(() => {});
   }
+  playerShell.classList.toggle("is-audio-only", audioOnly);
+  audioVisual.hidden = !audioOnly;
+  audioVisual.classList.remove("is-playing");
+  subtitleMenuTrigger.hidden = audioOnly;
+  audioTitle.textContent = session.metadata.name;
+  audioDetails.textContent = formatAudioSummary(media.info);
   filename.textContent = session.metadata.name;
   mediaInfo.textContent =
     `${formatBytes(session.metadata.size)} · ${formatProbeInfo(media.info)}`;
@@ -491,4 +514,10 @@ function requireElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing #${id}`);
   return element as T;
+}
+
+function requireSelector<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) throw new Error(`Missing ${selector}`);
+  return element;
 }

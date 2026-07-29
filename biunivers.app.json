@@ -2,9 +2,9 @@
   "formatVersion": 1,
   "protocol": "biunivers.static-app/1",
   "appId": "io.github.echo983.biunivers-wildplay",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "name": "WildPlay",
-  "description": "A Resource Session video player with Matroska text subtitles and selectable audio tracks.",
+  "description": "A Resource Session audio and video player with subtitles and selectable audio tracks.",
   "license": "MIT",
   "icon": "icon.svg",
   "window": {
